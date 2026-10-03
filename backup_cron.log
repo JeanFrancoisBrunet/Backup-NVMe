@@ -1,0 +1,146 @@
+[13/09/2026 18:23:18] ########## Début Sauvegarde Disk NVMe vers (USB+SD) ##########
+[13/09/2026 18:23:18] === Début sauvegarde vers USB ===
+[13/09/2026 18:23:18] Clé USB trouvée : /dev/sda2 déjà montée sur /media/usb
+[13/09/2026 18:23:18] Support    : Clé USB
+[13/09/2026 18:23:18] Montage    : /media/usb
+[13/09/2026 18:23:18] Espace lib : 160.04 Go
+[13/09/2026 18:23:18] Occupation SSD NVMe (source)      : 6.6% (60.1 Go / 915.3 Go)
+[13/09/2026 18:23:18] Occupation Clé USB (avant backup) : 26.4% (61.8 Go / 233.8 Go)
+[13/09/2026 18:23:18] BOOT source : /boot/firmware/
+[13/09/2026 18:23:18] Synchronisation ROOT...
+[13/09/2026 18:23:32] Rsync ROOT : OK
+[13/09/2026 18:23:32] Synchronisation BOOT...
+[13/09/2026 18:23:32] Rsync BOOT : OK
+[13/09/2026 18:23:32] Occupation Clé USB (après backup)  : 26.4% (61.8 Go / 233.8 Go)
+[13/09/2026 18:23:32] === Sauvegarde Clé USB terminée avec succès (durée : 0m 14s) ===
+[13/09/2026 18:23:32] === Début sauvegarde vers SD ===
+[13/09/2026 18:23:32] Carte SD trouvée : /dev/mmcblk0p2 déjà montée sur /media/jfbrunet/rootfs
+[13/09/2026 18:23:32] Support    : Carte SD
+[13/09/2026 18:23:32] Montage    : /media/jfbrunet/rootfs
+[13/09/2026 18:23:32] Espace lib : 155.15 Go
+[13/09/2026 18:23:32] Occupation SSD NVMe (source)      : 6.6% (60.1 Go / 915.3 Go)
+[13/09/2026 18:23:32] Occupation Carte SD (avant backup) : 28.3% (66.1 Go / 233.1 Go)
+[13/09/2026 18:23:32] BOOT source : /boot/firmware/
+[13/09/2026 18:23:32] Synchronisation ROOT...
+[13/09/2026 18:23:47] Rsync ROOT : OK
+[13/09/2026 18:23:47] Montage de /dev/mmcblk0p1 -> /media/jfbrunet/rootfs/boot
+[13/09/2026 18:23:47] Synchronisation BOOT...
+[13/09/2026 18:23:47] Rsync BOOT : OK
+[13/09/2026 18:23:47] Occupation Carte SD (après backup)  : 28.3% (66.1 Go / 233.1 Go)
+[13/09/2026 18:23:47] === Sauvegarde Carte SD terminée avec succès (durée : 0m 14s) ===
+[13/09/2026 18:23:47] Démontage BOOT...
+[13/09/2026 18:23:47] ---------- Résumé ----------
+[13/09/2026 18:23:47]   USB  : OK
+[13/09/2026 18:23:47]   SD   : OK
+[13/09/2026 18:23:47] Durée totale : 0m 29s
+[13/09/2026 18:23:47] ########## Fin Sauvegarde ##########
+[14/09/2026 12:00:02] ########## Début Sauvegarde Disk NVMe vers (USB+SD) ##########
+[14/09/2026 12:00:02] === Début sauvegarde vers USB ===
+[14/09/2026 12:00:02] Clé USB trouvée : /dev/sda2 déjà montée sur /media/usb
+[14/09/2026 12:00:02] Support    : Clé USB
+[14/09/2026 12:00:02] Montage    : /media/usb
+[14/09/2026 12:00:02] Espace lib : 160.04 Go
+[14/09/2026 12:00:02] Occupation SSD NVMe (source)      : 6.6% (60.1 Go / 915.3 Go)
+[14/09/2026 12:00:02] Occupation Clé USB (avant backup) : 26.4% (61.8 Go / 233.8 Go)
+[14/09/2026 12:00:02] BOOT source : /boot/firmware/
+[14/09/2026 12:00:02] Synchronisation ROOT...
+[14/09/2026 12:00:38] Rsync ROOT : OK
+[14/09/2026 12:00:38] Synchronisation BOOT...
+[14/09/2026 12:00:38] Rsync BOOT : OK
+[14/09/2026 12:00:38] Occupation Clé USB (après backup)  : 26.4% (61.8 Go / 233.8 Go)
+[14/09/2026 12:00:38] === Sauvegarde Clé USB terminée avec succès (durée : 0m 36s) ===
+[14/09/2026 12:00:38] === Début sauvegarde vers SD ===
+[14/09/2026 12:00:38] Carte SD trouvée : /dev/mmcblk0p2 déjà montée sur /media/jfbrunet/rootfs
+[14/09/2026 12:00:38] Support    : Carte SD
+[14/09/2026 12:00:38] Montage    : /media/jfbrunet/rootfs
+[14/09/2026 12:00:38] Espace lib : 155.15 Go
+[14/09/2026 12:00:38] Occupation SSD NVMe (source)      : 6.6% (60.1 Go / 915.3 Go)
+[14/09/2026 12:00:38] Occupation Carte SD (avant backup) : 28.3% (66.1 Go / 233.1 Go)
+[14/09/2026 12:00:38] BOOT source : /boot/firmware/
+[14/09/2026 12:00:38] Synchronisation ROOT...
+[14/09/2026 12:01:58] Rsync ROOT : OK
+[14/09/2026 12:01:58] Montage de /dev/mmcblk0p1 -> /media/jfbrunet/rootfs/boot
+[14/09/2026 12:01:58] Synchronisation BOOT...
+[14/09/2026 12:01:58] Rsync BOOT : OK
+[14/09/2026 12:01:58] Occupation Carte SD (après backup)  : 28.3% (66.1 Go / 233.1 Go)
+[14/09/2026 12:01:58] === Sauvegarde Carte SD terminée avec succès (durée : 1m 20s) ===
+[14/09/2026 12:01:58] Démontage BOOT...
+[14/09/2026 12:01:58] ---------- Résumé ----------
+[14/09/2026 12:01:58]   USB  : OK
+[14/09/2026 12:01:58]   SD   : OK
+[14/09/2026 12:01:58] Durée totale : 1m 56s
+[14/09/2026 12:01:58] ########## Fin Sauvegarde ##########
+[21/09/2026 12:00:01] ########## Début Sauvegarde Disk NVMe vers (USB+SD) ##########
+[21/09/2026 12:00:01] === Début sauvegarde vers USB ===
+[21/09/2026 12:00:01] Clé USB trouvée : /dev/sda2 déjà montée sur /media/usb
+[21/09/2026 12:00:01] Support    : Clé USB
+[21/09/2026 12:00:01] Montage    : /media/usb
+[21/09/2026 12:00:01] Espace lib : 160.02 Go
+[21/09/2026 12:00:01] Occupation SSD NVMe (source)      : 6.6% (60.3 Go / 915.3 Go)
+[21/09/2026 12:00:01] Occupation Clé USB (avant backup) : 26.4% (61.8 Go / 233.8 Go)
+[21/09/2026 12:00:01] BOOT source : /boot/firmware/
+[21/09/2026 12:00:01] Synchronisation ROOT...
+[21/09/2026 12:00:38] Rsync ROOT : OK
+[21/09/2026 12:00:38] Synchronisation BOOT...
+[21/09/2026 12:00:38] Rsync BOOT : OK
+[21/09/2026 12:00:38] Occupation Clé USB (après backup)  : 26.5% (62.0 Go / 233.8 Go)
+[21/09/2026 12:00:38] === Sauvegarde Clé USB terminée avec succès (durée : 0m 37s) ===
+[21/09/2026 12:00:38] === Début sauvegarde vers SD ===
+[21/09/2026 12:00:38] Carte SD trouvée : /dev/mmcblk0p2 déjà montée sur /media/jfbrunet/rootfs
+[21/09/2026 12:00:38] Support    : Carte SD
+[21/09/2026 12:00:38] Montage    : /media/jfbrunet/rootfs
+[21/09/2026 12:00:38] Espace lib : 155.13 Go
+[21/09/2026 12:00:38] Occupation SSD NVMe (source)      : 6.6% (60.3 Go / 915.3 Go)
+[21/09/2026 12:00:38] Occupation Carte SD (avant backup) : 28.3% (66.1 Go / 233.1 Go)
+[21/09/2026 12:00:38] BOOT source : /boot/firmware/
+[21/09/2026 12:00:38] Synchronisation ROOT...
+[21/09/2026 12:03:01] Rsync ROOT : OK
+[21/09/2026 12:03:01] Montage de /dev/mmcblk0p1 -> /media/jfbrunet/rootfs/boot
+[21/09/2026 12:03:01] Synchronisation BOOT...
+[21/09/2026 12:03:01] Rsync BOOT : OK
+[21/09/2026 12:03:01] Occupation Carte SD (après backup)  : 28.4% (66.3 Go / 233.1 Go)
+[21/09/2026 12:03:01] === Sauvegarde Carte SD terminée avec succès (durée : 2m 22s) ===
+[21/09/2026 12:03:01] Démontage BOOT...
+[21/09/2026 12:03:01] ---------- Résumé ----------
+[21/09/2026 12:03:01]   USB  : OK
+[21/09/2026 12:03:01]   SD   : OK
+[21/09/2026 12:03:01] Durée totale : 3m 00s
+[21/09/2026 12:03:01] ########## Fin Sauvegarde ##########
+[28/09/2026 12:00:01] ########## Début Sauvegarde Disk NVMe vers (USB+SD) ##########
+[28/09/2026 12:00:01] === Début sauvegarde vers USB ===
+[28/09/2026 12:00:01] Clé USB trouvée : /dev/sda2 déjà montée sur /media/usb
+[28/09/2026 12:00:01] Support    : Clé USB
+[28/09/2026 12:00:01] Montage    : /media/usb
+[28/09/2026 12:00:01] Espace lib : 160.01 Go
+[28/09/2026 12:00:01] Occupation SSD NVMe (source)      : 6.6% (60.2 Go / 915.3 Go)
+[28/09/2026 12:00:01] Occupation Clé USB (avant backup) : 26.4% (61.8 Go / 233.8 Go)
+[28/09/2026 12:00:01] BOOT source : /boot/firmware/
+[28/09/2026 12:00:01] Synchronisation ROOT...
+[28/09/2026 12:00:37]   file has vanished: "/var/spool/cups/tmp/cups-dbus-notifier-lockfile"
+[28/09/2026 12:00:37]   rsync warning: some files vanished before they could be transferred (code 24) at main.c(1347) [sender=3.2.7]
+[28/09/2026 12:00:37] Rsync ROOT : Terminé avec fichiers ignorés (code 24) - normal
+[28/09/2026 12:00:37] Synchronisation BOOT...
+[28/09/2026 12:00:38] Rsync BOOT : OK
+[28/09/2026 12:00:38] Occupation Clé USB (après backup)  : 26.4% (61.8 Go / 233.8 Go)
+[28/09/2026 12:00:38] === Sauvegarde Clé USB terminée avec succès (durée : 0m 36s) ===
+[28/09/2026 12:00:38] === Début sauvegarde vers SD ===
+[28/09/2026 12:00:38] Carte SD trouvée : /dev/mmcblk0p2 déjà montée sur /media/jfbrunet/rootfs
+[28/09/2026 12:00:38] Support    : Carte SD
+[28/09/2026 12:00:38] Montage    : /media/jfbrunet/rootfs
+[28/09/2026 12:00:38] Espace lib : 155.12 Go
+[28/09/2026 12:00:38] Occupation SSD NVMe (source)      : 6.6% (60.2 Go / 915.3 Go)
+[28/09/2026 12:00:38] Occupation Carte SD (avant backup) : 28.4% (66.1 Go / 233.1 Go)
+[28/09/2026 12:00:38] BOOT source : /boot/firmware/
+[28/09/2026 12:00:38] Synchronisation ROOT...
+[28/09/2026 12:02:06] Rsync ROOT : OK
+[28/09/2026 12:02:06] Montage de /dev/mmcblk0p1 -> /media/jfbrunet/rootfs/boot
+[28/09/2026 12:02:06] Synchronisation BOOT...
+[28/09/2026 12:02:06] Rsync BOOT : OK
+[28/09/2026 12:02:06] Occupation Carte SD (après backup)  : 28.4% (66.1 Go / 233.1 Go)
+[28/09/2026 12:02:06] === Sauvegarde Carte SD terminée avec succès (durée : 1m 28s) ===
+[28/09/2026 12:02:06] Démontage BOOT...
+[28/09/2026 12:02:06] ---------- Résumé ----------
+[28/09/2026 12:02:06]   USB  : OK
+[28/09/2026 12:02:06]   SD   : OK
+[28/09/2026 12:02:06] Durée totale : 2m 04s
+[28/09/2026 12:02:06] ########## Fin Sauvegarde ##########
