@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+ 
+*.log
+*.lock
+ 
+.msal_token_cache.json
+.secrets.env
+.env
+ 
+history.json.lock
