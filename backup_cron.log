@@ -144,3 +144,39 @@
 [28/09/2026 12:02:06]   SD   : OK
 [28/09/2026 12:02:06] Durée totale : 2m 04s
 [28/09/2026 12:02:06] ########## Fin Sauvegarde ##########
+[05/10/2026 12:00:01] ########## Début Sauvegarde Disk NVMe vers (USB+SD) ##########
+[05/10/2026 12:00:01] === Début sauvegarde vers USB ===
+[05/10/2026 12:00:01] Clé USB trouvée : /dev/sda2 déjà montée sur /media/usb
+[05/10/2026 12:00:01] Support    : Clé USB
+[05/10/2026 12:00:01] Montage    : /media/usb
+[05/10/2026 12:00:01] Espace lib : 160.16 Go
+[05/10/2026 12:00:01] Occupation SSD NVMe (source)      : 6.6% (60.3 Go / 915.3 Go)
+[05/10/2026 12:00:01] Occupation Clé USB (avant backup) : 26.4% (61.6 Go / 233.8 Go)
+[05/10/2026 12:00:01] BOOT source : /boot/firmware/
+[05/10/2026 12:00:01] Synchronisation ROOT...
+[05/10/2026 12:00:38] Rsync ROOT : OK
+[05/10/2026 12:00:38] Synchronisation BOOT...
+[05/10/2026 12:00:38] Rsync BOOT : OK
+[05/10/2026 12:00:38] Occupation Clé USB (après backup)  : 26.5% (61.9 Go / 233.8 Go)
+[05/10/2026 12:00:38] === Sauvegarde Clé USB terminée avec succès (durée : 0m 36s) ===
+[05/10/2026 12:00:38] === Début sauvegarde vers SD ===
+[05/10/2026 12:00:38] Carte SD trouvée : /dev/mmcblk0p2 déjà montée sur /media/jfbrunet/rootfs
+[05/10/2026 12:00:38] Support    : Carte SD
+[05/10/2026 12:00:38] Montage    : /media/jfbrunet/rootfs
+[05/10/2026 12:00:38] Espace lib : 155.27 Go
+[05/10/2026 12:00:38] Occupation SSD NVMe (source)      : 6.6% (60.3 Go / 915.3 Go)
+[05/10/2026 12:00:38] Occupation Carte SD (avant backup) : 28.3% (65.9 Go / 233.1 Go)
+[05/10/2026 12:00:38] BOOT source : /boot/firmware/
+[05/10/2026 12:00:38] Synchronisation ROOT...
+[05/10/2026 12:01:33] Rsync ROOT : OK
+[05/10/2026 12:01:33] Montage de /dev/mmcblk0p1 -> /media/jfbrunet/rootfs/boot
+[05/10/2026 12:01:33] Synchronisation BOOT...
+[05/10/2026 12:01:33] Rsync BOOT : OK
+[05/10/2026 12:01:33] Occupation Carte SD (après backup)  : 28.4% (66.2 Go / 233.1 Go)
+[05/10/2026 12:01:33] === Sauvegarde Carte SD terminée avec succès (durée : 0m 55s) ===
+[05/10/2026 12:01:33] Démontage BOOT...
+[05/10/2026 12:01:33] ---------- Résumé ----------
+[05/10/2026 12:01:33]   USB  : OK
+[05/10/2026 12:01:33]   SD   : OK
+[05/10/2026 12:01:33] Durée totale : 1m 32s
+[05/10/2026 12:01:33] ########## Fin Sauvegarde ##########
