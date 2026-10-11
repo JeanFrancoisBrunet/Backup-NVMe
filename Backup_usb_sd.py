@@ -5,6 +5,9 @@
 #  Raspberry PI5 (16 Go RAM, SSD NVMe 1 To, OS Bookworm)
 #
 #  Auteur  : Jean‑François BRUNET - JFBConseils - Avril (256 Go) / Septembre 2026
+#
+#  Bootabilité : après les rsync, les PARTUUID du NVMe sont remplacés par ceux
+#  du support dans /etc/fstab et boot/cmdline.txt de la copie.
 # ===============================================================================
 
 import tkinter as tk
@@ -12,6 +15,7 @@ from tkinter import ttk, scrolledtext
 from PIL import Image, ImageTk, ImageOps
 import subprocess
 import os
+import re
 import shutil
 import threading
 from datetime import datetime
@@ -35,6 +39,129 @@ def usage_pct(path):
     total, used, _ = shutil.disk_usage(path)
     pct = (used / total * 100) if total else 0.0
     return used / (1024 ** 3), total / (1024 ** 3), pct
+
+# ---------------------------------------------------------------------- #
+# Journaux (log2ram) : copie du disque du NVMe vers /var/log de la copie #
+# ---------------------------------------------------------------------- #
+LOG_DISK_SRC = "/var/hdd.log"   # copie sur disque des journaux (log2ram)
+
+def sync_logs(dest, logfn):
+    """
+    Avec log2ram, /var/log est en mémoire et sa copie persistante est /var/hdd.log.
+    Au démarrage de la copie, log2ram relit le /var/log DISQUE de la copie : on y
+    recopie donc /var/hdd.log du NVMe (sinon exim4, logrotate... échouent).
+    'logfn' reçoit un message sans retour à la ligne final. Renvoie True si OK ou sans objet.
+    """
+    if subprocess.run(["findmnt", "-n", LOG_DISK_SRC],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+        logfn(f"Journaux : {LOG_DISK_SRC} absent (log2ram inactif), étape ignorée.")
+        return True
+    dst = os.path.join(dest, "var", "log")
+    if not os.path.isdir(dst):
+        logfn(f"[WARN] Journaux : {dst} introuvable, étape ignorée.")
+        return False
+    proc = subprocess.run(["sudo", "rsync", "-aAX", "--delete", LOG_DISK_SRC + "/", dst + "/"],
+                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    if proc.returncode in (0, 23, 24):
+        logfn(f"Journaux : {LOG_DISK_SRC} → {dst} : OK")
+        return True
+    logfn(f"[WARN] Journaux : échec (code {proc.returncode}) {proc.stdout.strip()}")
+    return False
+
+# ---------------------------------------------------------------------- #
+# Bootabilité : PARTUUID de la copie                                     #
+# ---------------------------------------------------------------------- #
+def _findmnt_source(path):
+    """Périphérique (ex. /dev/sda2) monté sur 'path' ou contenant 'path', sinon ''."""
+    try:
+        return subprocess.check_output(
+            ["findmnt", "-n", "-o", "SOURCE", "--target", path], text=True).strip()
+    except Exception:
+        return ""
+
+def _partuuid(dev):
+    """PARTUUID d'une partition (via lsblk), sinon ''."""
+    if not dev:
+        return ""
+    try:
+        return subprocess.check_output(
+            ["lsblk", "-no", "PARTUUID", dev], text=True).strip()
+    except Exception:
+        return ""
+
+def _partnum(dev):
+    """Numéro de partition (/dev/sda2 -> 2, /dev/mmcblk0p2 -> 2)."""
+    m = re.search(r"(\d+)$", dev or "")
+    return int(m.group(1)) if m else None
+
+def fix_boot_identifiers(dest, dest_boot_path, boot_src, logfn):
+    """
+    Après les rsync, /etc/fstab et boot/cmdline.txt de la copie contiennent les
+    PARTUUID du NVMe. On les remplace par ceux du support (clé USB / carte SD)
+    pour que la copie puisse démarrer seule. Renvoie True si tout est correct.
+    'logfn' reçoit un message sans retour à la ligne final.
+    """
+    if not os.path.ismount(dest_boot_path):
+        logfn("[WARN] Partition BOOT non montée : correction des PARTUUID impossible.")
+        return False
+
+    # PARTUUID de la source (NVMe en cours d'utilisation)
+    old_root = _partuuid(_findmnt_source("/"))
+    old_boot = _partuuid(_findmnt_source(boot_src.rstrip("/") or "/"))
+
+    # PARTUUID de la destination
+    dst_root_dev = _findmnt_source(dest)
+    dst_boot_dev = _findmnt_source(dest_boot_path)
+    new_boot = _partuuid(dst_boot_dev)
+    new_root = _partuuid(dst_root_dev)
+
+    # Table MBR : PARTUUID = "<signature disque>-<n° partition>". Si lsblk n'en
+    # renvoie pas pour la racine (ex. partition tronquée de la carte SD), on le
+    # déduit de celui de la partition BOOT du même disque.
+    if not new_root and new_boot and "-" in new_boot:
+        n = _partnum(dst_root_dev)
+        if n:
+            new_root = f"{new_boot.rsplit('-', 1)[0]}-{n:02d}"
+            logfn(f"PARTUUID racine déduit de celui du BOOT : {new_root}")
+
+    if not (old_root and old_boot and new_root and new_boot):
+        logfn(f"[WARN] PARTUUID introuvables (source {old_root or '?'}/{old_boot or '?'}, "
+              f"destination {new_root or '?'}/{new_boot or '?'}) : fstab et cmdline.txt non modifiés.")
+        return False
+
+    mapping = {
+        f"PARTUUID={old_root}": f"PARTUUID={new_root}",
+        f"PARTUUID={old_boot}": f"PARTUUID={new_boot}",
+    }
+    targets = [os.path.join(dest, "etc", "fstab"),
+               os.path.join(dest_boot_path, "cmdline.txt")]
+
+    ok = True
+    for path in targets:
+        try:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            logfn(f"[WARN] Lecture de {path} impossible : {e}")
+            ok = False
+            continue
+
+        new_content = content
+        for old, new in mapping.items():
+            new_content = new_content.replace(old, new)
+
+        if new_content == content:
+            logfn(f"{path} : identifiants déjà corrects")
+            continue
+
+        proc = subprocess.run(["sudo", "-n", "tee", path], input=new_content,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            logfn(f"{path} : PARTUUID corrigés ({old_root} → {new_root})")
+        else:
+            logfn(f"[WARN] Écriture de {path} impossible : {proc.stderr.strip()}")
+            ok = False
+    return ok
 
 # ---------------------------------------------------------------------- #
 # APP                                                                    #
@@ -522,6 +649,21 @@ class BackupApp(tk.Toplevel):
                 self.after(0, self.on_error,
                            f"Rsync BOOT a rencontré une erreur (code {ret2}).")
                 return
+
+            # ---- Journaux persistants (log2ram) ----
+            self.after(0, self.log_write, "\nSynchronisation JOURNAUX…\n")
+            sync_logs(self.dest, lambda m: self.after(0, self.log_write, m + "\n"))
+
+            # ---- Correction des PARTUUID (fstab + cmdline.txt de la copie) ----
+            self.after(0, self.log_write,
+                       "\nCorrection des identifiants de démarrage (fstab, cmdline.txt)…\n")
+            fix_ok = fix_boot_identifiers(
+                self.dest, dest_boot_path, boot_src,
+                lambda m: self.after(0, self.log_write, m + "\n"))
+            if not fix_ok:
+                self.after(0, self.log_write,
+                           f"[WARN] {self.label} : identifiants non corrigés, "
+                           f"la copie risque de ne pas démarrer seule.\n")
 
             # Occupation du support après la sauvegarde
             dst_used_go, dst_total_go, dst_pct = usage_pct(self.dest)

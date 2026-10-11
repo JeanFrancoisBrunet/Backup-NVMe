@@ -3,6 +3,7 @@
 #  Sauvegarde CRON du SSD NVMe -> Clé USB & Carte SD (Raspberry Pi 5)
 #  Version simplifiée sans interface graphique, basée sur Backup_usb_sd.py
 #  Auteur : Jean-François BRUNET - JFBConseils - Juillet 2026
+#  Rév : Octobre 2026
 # =============================================================================
 #
 #  Utilisation :
@@ -16,10 +17,15 @@
 #  Lancement manuel par :    python3 /home/jfbrunet/Projects/Backup_NVMe/Backup_cron.py 2>&1 | tee /home/jfbrunet/Projects/Backup_NVMe/backup_cron.log
 #  Lecture du fichier log :  cat /home/jfbrunet/Projects/Backup_NVMe/backup_cron.log
 #
+#  Bootabilité : après les rsync, le script réécrit les PARTUUID du NVMe par ceux
+#  du support dans /etc/fstab et boot/cmdline.txt de la copie (sinon la copie
+#  pointerait vers la partition du NVMe et ne démarrerait pas seule).
+#
 # =============================================================================
 
 import subprocess
 import os
+import re
 import shutil
 import sys
 import argparse
@@ -34,9 +40,19 @@ EXCLUDE_HOME     = "/home/jfbrunet/.cache/*"  # à adapter si besoin
 
 EXT_FS = ("ext4", "ext3", "ext2")
 
+# Seuil d'alerte : si le support de sauvegarde dépasse ce % d'occupation
+# après la sauvegarde, un avertissement est loggé (sans faire échouer le script)
+WARN_THRESHOLD_PCT = 80
+
 def log(msg):
     """Affiche un message horodaté (capturé par cron dans le fichier log)."""
     print(f"[{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] {msg}", flush=True)
+
+def usage_pct(path):
+    """Renvoie (used_go, total_go, pct_occupation) pour le point de montage donné."""
+    total, used, _ = shutil.disk_usage(path)
+    pct = (used / total * 100) if total else 0.0
+    return used / (1024 ** 3), total / (1024 ** 3), pct
 
 # ---------------------------------------------------------------------- #
 # lsblk                                                                  #
@@ -139,16 +155,16 @@ def resolve_dest(target):
 
     disks = find_disks(rows, prefix)
     if not disks:
-        return "", label
+        return "", label, False
 
     dev, mnt = find_already_mounted(rows, disks)
     if mnt:
         log(f"{label} trouvée : {dev} déjà montée sur {mnt}")
-        return mnt, label
+        return mnt, label, False
 
     root_dev = find_root_partition(rows, disks)
     if not root_dev:
-        return "", label
+        return "", label, False
 
     os.makedirs(fallback, exist_ok=True)
     log(f"{label} détectée : {root_dev} -> montage sur {fallback}")
@@ -156,10 +172,10 @@ def resolve_dest(target):
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if proc.returncode == 0:
         log(f"-> {label} montée automatiquement.")
-        return fallback, label
+        return fallback, label, True
 
     log(f"[WARN] Impossible de monter {root_dev} : {proc.stderr.strip()}")
-    return "", label
+    return "", label, False
 
 def run_cmd(cmd, phase):
     """Exécute une commande, log la sortie, renvoie le code retour."""
@@ -177,6 +193,100 @@ def run_cmd(cmd, phase):
     return code
 
 # ---------------------------------------------------------------------- #
+# Bootabilité : PARTUUID de la copie                                     #
+# ---------------------------------------------------------------------- #
+def _findmnt_source(path):
+    """Périphérique (ex. /dev/sda2) monté sur 'path' ou contenant 'path', sinon ''."""
+    try:
+        return subprocess.check_output(
+            ["findmnt", "-n", "-o", "SOURCE", "--target", path], text=True).strip()
+    except Exception:
+        return ""
+
+def _partuuid(dev):
+    """PARTUUID d'une partition (via lsblk), sinon ''."""
+    if not dev:
+        return ""
+    try:
+        return subprocess.check_output(
+            ["lsblk", "-no", "PARTUUID", dev], text=True).strip()
+    except Exception:
+        return ""
+
+def _partnum(dev):
+    """Numéro de partition (/dev/sda2 -> 2, /dev/mmcblk0p2 -> 2)."""
+    m = re.search(r"(\d+)$", dev or "")
+    return int(m.group(1)) if m else None
+
+def fix_boot_identifiers(dest, dest_boot_path, boot_src):
+    """
+    Après les rsync, /etc/fstab et boot/cmdline.txt de la copie contiennent les
+    PARTUUID du NVMe. On les remplace par ceux du support (clé USB / carte SD)
+    pour que la copie puisse démarrer seule. Renvoie True si tout est correct.
+    """
+    if not os.path.ismount(dest_boot_path):
+        log("[WARN] Partition BOOT non montée : correction des PARTUUID impossible.")
+        return False
+
+    # PARTUUID de la source (NVMe en cours d'utilisation)
+    old_root = _partuuid(_findmnt_source("/"))
+    old_boot = _partuuid(_findmnt_source(boot_src.rstrip("/") or "/"))
+
+    # PARTUUID de la destination
+    dst_root_dev = _findmnt_source(dest)
+    dst_boot_dev = _findmnt_source(dest_boot_path)
+    new_boot = _partuuid(dst_boot_dev)
+    new_root = _partuuid(dst_root_dev)
+
+    # Table MBR : PARTUUID = "<signature disque>-<n° partition>". Si lsblk n'en
+    # renvoie pas pour la racine (ex. partition tronquée de la carte SD), on le
+    # déduit de celui de la partition BOOT du même disque.
+    if not new_root and new_boot and "-" in new_boot:
+        n = _partnum(dst_root_dev)
+        if n:
+            new_root = f"{new_boot.rsplit('-', 1)[0]}-{n:02d}"
+            log(f"PARTUUID racine déduit de celui du BOOT : {new_root}")
+
+    if not (old_root and old_boot and new_root and new_boot):
+        log(f"[WARN] PARTUUID introuvables (source {old_root or '?'}/{old_boot or '?'}, "
+            f"destination {new_root or '?'}/{new_boot or '?'}) : fstab et cmdline.txt non modifiés.")
+        return False
+
+    mapping = {
+        f"PARTUUID={old_root}": f"PARTUUID={new_root}",
+        f"PARTUUID={old_boot}": f"PARTUUID={new_boot}",
+    }
+    targets = [os.path.join(dest, "etc", "fstab"),
+               os.path.join(dest_boot_path, "cmdline.txt")]
+
+    ok = True
+    for path in targets:
+        try:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            log(f"[WARN] Lecture de {path} impossible : {e}")
+            ok = False
+            continue
+
+        new_content = content
+        for old, new in mapping.items():
+            new_content = new_content.replace(old, new)
+
+        if new_content == content:
+            log(f"{path} : identifiants déjà corrects")
+            continue
+
+        proc = subprocess.run(["sudo", "-n", "tee", path], input=new_content,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            log(f"{path} : PARTUUID corrigés ({old_root} -> {new_root})")
+        else:
+            log(f"[WARN] Écriture de {path} impossible : {proc.stderr.strip()}")
+            ok = False
+    return ok
+
+# ---------------------------------------------------------------------- #
 # Sauvegarde d'un seul support (USB ou SD)                               #
 # Renvoie True si succès, False si échec (n'interrompt jamais le reste)  #
 # ---------------------------------------------------------------------- #
@@ -184,7 +294,7 @@ def backup_one(target):
     start_time = datetime.now()
     log(f"=== Début sauvegarde vers {target.upper()} ===")
 
-    dest, label = resolve_dest(target)
+    dest, label, mounted_by_script = resolve_dest(target)
     if not dest:
         log(f"ERREUR : {label} introuvable. Sauvegarde ignorée pour ce support.")
         return False
@@ -199,9 +309,14 @@ def backup_one(target):
             f"({free / (1024**3):.2f} Go libres < {needed / (1024**3):.2f} Go nécessaires)")
         return False
 
+    src_used_go, src_total_go, src_pct = usage_pct("/")
+    dst_used_go, dst_total_go, dst_pct = usage_pct(dest)
+
     log(f"Support    : {label}")
     log(f"Montage    : {dest}")
     log(f"Espace lib : {free / (1024**3):.2f} Go")
+    log(f"Occupation SSD NVMe (source)      : {src_pct:.1f}% ({src_used_go:.1f} Go / {src_total_go:.1f} Go)")
+    log(f"Occupation {label} (avant backup) : {dst_pct:.1f}% ({dst_used_go:.1f} Go / {dst_total_go:.1f} Go)")
 
     mounted_boot = False
 
@@ -262,6 +377,18 @@ def backup_one(target):
             log(f"ERREUR : Rsync BOOT a échoué pour {label}.")
             return False
 
+        # ---- Correction des PARTUUID (fstab + cmdline.txt de la copie) ----
+        log("Correction des identifiants de démarrage (fstab, cmdline.txt)...")
+        if not fix_boot_identifiers(dest, dest_boot_path, boot_src):
+            log(f"[WARN] {label} : identifiants non corrigés, la copie risque de ne pas démarrer seule.")
+
+        # Occupation du support après la sauvegarde
+        dst_used_go, dst_total_go, dst_pct = usage_pct(dest)
+        log(f"Occupation {label} (après backup)  : {dst_pct:.1f}% ({dst_used_go:.1f} Go / {dst_total_go:.1f} Go)")
+        if dst_pct >= WARN_THRESHOLD_PCT:
+            log(f"[WARNING] {label} occupée à {dst_pct:.1f}% (seuil d'alerte : {WARN_THRESHOLD_PCT}%). "
+                f"Pensez à surveiller l'espace disponible ou à prévoir un support plus grand.")
+
         elapsed = datetime.now() - start_time
         minutes, seconds = divmod(int(elapsed.total_seconds()), 60)
         log(f"=== Sauvegarde {label} terminée avec succès (durée : {minutes}m {seconds:02d}s) ===")
@@ -278,8 +405,10 @@ def backup_one(target):
             log("Démontage BOOT...")
             subprocess.run(["sudo", "-n", "umount", dest_boot_path])
 
-        # Démontage support (seulement si monté par ce script, càd point fallback)
-        if dest in (DEST_FALLBACK, DEST_FALLBACK_SD) and os.path.ismount(dest):
+        # Démontage support (seulement si c'est CE script qui l'a monté ;
+        # un support déjà monté par le système - systemd, session graphique,
+        # branchement permanent - n'est jamais démonté par ce script)
+        if mounted_by_script and os.path.ismount(dest):
             log(f"Démontage {label}...")
             subprocess.run(["sudo", "-n", "umount", dest])
 

@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-# =============================================================================
-#  Programme de Sauvegarde du disk SSD - NVMe Samsung de 256 Go vers
+# ===============================================================================
+#  Programme de Sauvegarde du disk SSD - NVMe vers
 #                       une Clé USB Bootable ou une Carte SD Bootable
-#  Raspberry PI5 (16 Go RAM, SSD NVMe 256 Go, OS Bookworm)
+#  Raspberry PI5 (16 Go RAM, SSD NVMe 1 To, OS Bookworm)
 #
-#  Auteur  : Jean‑François BRUNET - JFBConseils - Avril 2026
-# =============================================================================
+#  Auteur  : Jean‑François BRUNET - JFBConseils - Avril (256 Go)
+#  Rév : Septembre 2026 (1 To) ; Octobre 2026
+#
+#  Bootabilité : après les rsync, les PARTUUID du NVMe sont remplacés 
+#  par ceux du support dans /etc/fstab et boot/cmdline.txt de la copie.
+# ===============================================================================
 
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from PIL import Image, ImageTk, ImageOps
 import subprocess
 import os
+import re
 import shutil
 import threading
 from datetime import datetime
@@ -25,6 +30,111 @@ ICON_PATH        = "/home/jfbrunet/Projects/Backup_NVMe/icons"
 
 # Système de fichiers considérés comme ROOT Linux
 EXT_FS = ("ext4", "ext3", "ext2")
+
+# Seuil d'alerte : si le support de sauvegarde dépasse ce % d'occupation
+# après la sauvegarde, un avertissement est affiché (sans faire échouer la sauvegarde)
+WARN_THRESHOLD_PCT = 80
+
+def usage_pct(path):
+    """Renvoie (used_go, total_go, pct_occupation) pour le point de montage donné."""
+    total, used, _ = shutil.disk_usage(path)
+    pct = (used / total * 100) if total else 0.0
+    return used / (1024 ** 3), total / (1024 ** 3), pct
+
+# ---------------------------------------------------------------------- #
+# Bootabilité : PARTUUID de la copie                                     #
+# ---------------------------------------------------------------------- #
+def _findmnt_source(path):
+    """Périphérique (ex. /dev/sda2) monté sur 'path' ou contenant 'path', sinon ''."""
+    try:
+        return subprocess.check_output(
+            ["findmnt", "-n", "-o", "SOURCE", "--target", path], text=True).strip()
+    except Exception:
+        return ""
+
+def _partuuid(dev):
+    """PARTUUID d'une partition (via lsblk), sinon ''."""
+    if not dev:
+        return ""
+    try:
+        return subprocess.check_output(
+            ["lsblk", "-no", "PARTUUID", dev], text=True).strip()
+    except Exception:
+        return ""
+
+def _partnum(dev):
+    """Numéro de partition (/dev/sda2 -> 2, /dev/mmcblk0p2 -> 2)."""
+    m = re.search(r"(\d+)$", dev or "")
+    return int(m.group(1)) if m else None
+
+def fix_boot_identifiers(dest, dest_boot_path, boot_src, logfn):
+    """
+    Après les rsync, /etc/fstab et boot/cmdline.txt de la copie contiennent les
+    PARTUUID du NVMe. On les remplace par ceux du support (clé USB / carte SD)
+    pour que la copie puisse démarrer seule. Renvoie True si tout est correct.
+    'logfn' reçoit un message sans retour à la ligne final.
+    """
+    if not os.path.ismount(dest_boot_path):
+        logfn("[WARN] Partition BOOT non montée : correction des PARTUUID impossible.")
+        return False
+
+    # PARTUUID de la source (NVMe en cours d'utilisation)
+    old_root = _partuuid(_findmnt_source("/"))
+    old_boot = _partuuid(_findmnt_source(boot_src.rstrip("/") or "/"))
+
+    # PARTUUID de la destination
+    dst_root_dev = _findmnt_source(dest)
+    dst_boot_dev = _findmnt_source(dest_boot_path)
+    new_boot = _partuuid(dst_boot_dev)
+    new_root = _partuuid(dst_root_dev)
+
+    # Table MBR : PARTUUID = "<signature disque>-<n° partition>". Si lsblk n'en
+    # renvoie pas pour la racine (ex. partition tronquée de la carte SD), 
+    # on le déduit de celui de la partition BOOT du même disque.
+    if not new_root and new_boot and "-" in new_boot:
+        n = _partnum(dst_root_dev)
+        if n:
+            new_root = f"{new_boot.rsplit('-', 1)[0]}-{n:02d}"
+            logfn(f"PARTUUID racine déduit de celui du BOOT : {new_root}")
+
+    if not (old_root and old_boot and new_root and new_boot):
+        logfn(f"[WARN] PARTUUID introuvables (source {old_root or '?'}/{old_boot or '?'}, "
+              f"destination {new_root or '?'}/{new_boot or '?'}) : fstab et cmdline.txt non modifiés.")
+        return False
+
+    mapping = {
+        f"PARTUUID={old_root}": f"PARTUUID={new_root}",
+        f"PARTUUID={old_boot}": f"PARTUUID={new_boot}",
+    }
+    targets = [os.path.join(dest, "etc", "fstab"),
+               os.path.join(dest_boot_path, "cmdline.txt")]
+
+    ok = True
+    for path in targets:
+        try:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            logfn(f"[WARN] Lecture de {path} impossible : {e}")
+            ok = False
+            continue
+
+        new_content = content
+        for old, new in mapping.items():
+            new_content = new_content.replace(old, new)
+
+        if new_content == content:
+            logfn(f"{path} : identifiants déjà corrects")
+            continue
+
+        proc = subprocess.run(["sudo", "-n", "tee", path], input=new_content,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if proc.returncode == 0:
+            logfn(f"{path} : PARTUUID corrigés ({old_root} → {new_root})")
+        else:
+            logfn(f"[WARN] Écriture de {path} impossible : {proc.stderr.strip()}")
+            ok = False
+    return ok
 
 # ---------------------------------------------------------------------- #
 # APP                                                                    #
@@ -63,7 +173,7 @@ class BackupApp(tk.Toplevel):
         right_frame.pack(side="left", padx=55, pady=10)
 
         tk.Label(right_frame,
-                 text="Backup SSD-NVMe 256 GB",
+                 text="Backup SSD-NVMe 1 To",
                  font=("Helvetica", 16, "bold"),
                  anchor="w").pack(anchor="w")
 
@@ -392,6 +502,7 @@ class BackupApp(tk.Toplevel):
     def start_backup(self):
         target = self.target_var.get()
         label  = "Clé USB" if target == "usb" else "Carte SD"
+        self.label = label
 
         self._refresh_lsblk_cache()
         self._cancelled = False
@@ -417,9 +528,14 @@ class BackupApp(tk.Toplevel):
             )
             return
 
+        src_used_go, src_total_go, src_pct = usage_pct("/")
+        dst_used_go, dst_total_go, dst_pct = usage_pct(self.dest)
+
         self.log_write(f"Support    : {label}\n")
         self.log_write(f"Montage    : {self.dest}\n")
         self.log_write(f"Espace lib : {free / (1024 ** 3):.2f} Go\n")
+        self.log_write(f"Occupation SSD NVMe (source)      : {src_pct:.1f}% ({src_used_go:.1f} Go / {src_total_go:.1f} Go)\n")
+        self.log_write(f"Occupation {label} (avant backup) : {dst_pct:.1f}% ({dst_used_go:.1f} Go / {dst_total_go:.1f} Go)\n")
 
         self.btn.config(state="disabled")
         self.btn_cancel.config(state="normal")
@@ -507,8 +623,30 @@ class BackupApp(tk.Toplevel):
                            f"Rsync BOOT a rencontré une erreur (code {ret2}).")
                 return
 
+            # ---- Correction des PARTUUID (fstab + cmdline.txt de la copie) ----
+            self.after(0, self.log_write,
+                       "\nCorrection des identifiants de démarrage (fstab, cmdline.txt)…\n")
+            fix_ok = fix_boot_identifiers(
+                self.dest, dest_boot_path, boot_src,
+                lambda m: self.after(0, self.log_write, m + "\n"))
+            if not fix_ok:
+                self.after(0, self.log_write,
+                           f"[WARN] {self.label} : identifiants non corrigés, "
+                           f"la copie risque de ne pas démarrer seule.\n")
+
+            # Occupation du support après la sauvegarde
+            dst_used_go, dst_total_go, dst_pct = usage_pct(self.dest)
+            self.after(0, self.log_write,
+                       f"Occupation {self.label} (après backup)  : {dst_pct:.1f}% "
+                       f"({dst_used_go:.1f} Go / {dst_total_go:.1f} Go)\n")
+            if dst_pct >= WARN_THRESHOLD_PCT:
+                self.after(0, self.log_write,
+                           f"[WARNING] {self.label} occupée à {dst_pct:.1f}% "
+                           f"(seuil d'alerte : {WARN_THRESHOLD_PCT}%). "
+                           f"Pensez à surveiller l'espace disponible ou à prévoir un support plus grand.\n")
+
             elapsed = datetime.now() - start_time
-            self.after(0, self.on_success, elapsed)
+            self.after(0, self.on_success, elapsed, dst_pct)
 
         except Exception as e:
             self.after(0, self.on_error, str(e))
@@ -522,11 +660,16 @@ class BackupApp(tk.Toplevel):
     #  Callbacks résultat                                                #
     # ------------------------------------------------------------------ #
 
-    def on_success(self, elapsed):
+    def on_success(self, elapsed, dst_pct=None):
         self.progress.stop()
         end_time = datetime.now()
         minutes, seconds = divmod(int(elapsed.total_seconds()), 60)
-        self.status.config(text="✅ Sauvegarde terminée avec succès", fg="green")
+        if dst_pct is not None and dst_pct >= WARN_THRESHOLD_PCT:
+            self.status.config(
+                text=f"✅ Sauvegarde terminée (⚠️ support occupé à {dst_pct:.0f}%)",
+                fg="darkorange")
+        else:
+            self.status.config(text="✅ Sauvegarde terminée avec succès", fg="green")
         self.btn.config(state="normal")
         self.log_write(
             f"--- Terminé : {end_time.strftime('%d/%m/%Y %H:%M:%S')} "
