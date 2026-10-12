@@ -9,6 +9,7 @@
 #     python3 Backup_cron.py              -> sauvegarde USB puis SD (défaut)
 #     python3 Backup_cron.py --target usb -> sauvegarde uniquement la Clé USB
 #     python3 Backup_cron.py --target sd  -> sauvegarde uniquement la Carte SD
+#     python3 Backup_cron.py --test-telegram -> envoie un message de test Telegram
 #
 #  Cron hebdomadaire, tous les lundis à 12h00 (Backup NVMe vers USB puis SD, l'un après l'autre) :
 #     0 12 * * 1 /usr/bin/python3 /home/jfbrunet/Projects/Backup_NVMe/Backup_cron.py >> /home/jfbrunet/Projects/Backup_NVMe/backup_cron.log 2>&1
@@ -20,6 +21,12 @@
 #  du support dans /etc/fstab et boot/cmdline.txt de la copie (sinon la copie
 #  pointerait vers la partition du NVMe et ne démarrerait pas seule).
 #
+#  Notifications Telegram : à la fin, un compte rendu (✅ / ⚠️ / ❌) est envoyé via
+#  le même bot et le même fichier ~/.telegram_config que telegram_bot_ctrl_pi5.py
+#  (clés token_ctrl et chat_id). Les échecs et anomalies sont toujours envoyés ;
+#  le message de succès dépend de NOTIFY_ON_SUCCESS. Le bot n'a pas besoin de
+#  tourner : le script appelle directement l'API Telegram.
+#
 # =============================================================================
 
 import subprocess
@@ -28,6 +35,9 @@ import re
 import shutil
 import sys
 import argparse
+import urllib.request
+import urllib.parse
+from pathlib import Path
 from datetime import datetime
 
 # ---------------------------------------------------------------------- #
@@ -43,9 +53,65 @@ EXT_FS = ("ext4", "ext3", "ext2")
 # après la sauvegarde, un avertissement est loggé (sans faire échouer le script)
 WARN_THRESHOLD_PCT = 80
 
+# ---- Notifications Telegram ----
+NOTIFY_TELEGRAM   = True    # False = aucune notification
+NOTIFY_ON_SUCCESS = True    # True = message aussi quand tout va bien (utile pour savoir que la sauvegarde a tourné)
+CONFIG_FILE       = Path.home() / ".telegram_config"
+TOKEN_KEY         = "token_ctrl"   # même clé que telegram_bot_ctrl_pi5.py
+
+ANOMALIES       = []   # messages [WARN] / ERREUR / ECHEC collectés pendant l'exécution
+STATS           = {}   # résultats par support : durée, occupation...
+_current_target = ""   # support en cours de traitement (pour étiqueter les anomalies)
+
 def log(msg):
-    """Affiche un message horodaté (capturé par cron dans le fichier log)."""
+    """Affiche un message horodaté (capturé par cron dans le fichier log)
+    et mémorise les anomalies pour le compte rendu Telegram."""
     print(f"[{datetime.now().strftime('%d/%m/%Y %H:%M:%S')}] {msg}", flush=True)
+    if msg.startswith("[WARN") or msg.startswith("ERREUR") or "ECHEC (code" in msg:
+        ANOMALIES.append(f"[{_current_target.upper() or 'GLOBAL'}] {msg.strip()}")
+
+def _read_telegram_config():
+    """Lit token et chat_id dans ~/.telegram_config (lignes clé=valeur).
+    Renvoie (token, chat_id, erreur)."""
+    token = chat_id = ""
+    try:
+        for line in CONFIG_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip().strip('"').strip("'")
+            if k == TOKEN_KEY:
+                token = v
+            elif k == "chat_id":
+                chat_id = v
+    except Exception as e:
+        return "", "", f"lecture de {CONFIG_FILE} impossible : {e}"
+    if not token or not chat_id:
+        return "", "", f"{TOKEN_KEY} ou chat_id absent de {CONFIG_FILE}"
+    return token, chat_id, ""
+
+def send_telegram(text):
+    """Envoie 'text' au chat Telegram. Renvoie (ok, info). Ne lève jamais d'exception
+    et n'affiche jamais le token."""
+    token, chat_id, err = _read_telegram_config()
+    if err:
+        return False, err
+    try:
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": text[:4000]}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return (r.status == 200), f"HTTP {r.status}"
+    except Exception as e:
+        # on n'affiche que le type d'erreur : l'URL contient le token
+        code = getattr(e, "code", "")
+        return False, f"{type(e).__name__} {code}".strip()
+
+def verify_boot_files(dest_boot_path):
+    """Vérifie que la partition BOOT de la copie contient bien les fichiers indispensables.
+    Renvoie la liste des fichiers manquants."""
+    needed = ("kernel_2712.img", "config.txt", "cmdline.txt")
+    return [f for f in needed if not os.path.isfile(os.path.join(dest_boot_path, f))]
 
 def usage_pct(path):
     """Renvoie (used_go, total_go, pct_occupation) pour le point de montage donné."""
@@ -311,6 +377,22 @@ def fix_boot_identifiers(dest, dest_boot_path, boot_src):
         else:
             log(f"[WARN] Écriture de {path} impossible : {proc.stderr.strip()}")
             ok = False
+
+    # Vérification après écriture : plus aucun PARTUUID du NVMe, et celui de la copie présent
+    for path in targets:
+        try:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            log(f"[WARN] Vérification de {path} impossible : {e}")
+            ok = False
+            continue
+        if f"PARTUUID={old_root}" in content or f"PARTUUID={old_boot}" in content:
+            log(f"[WARN] {path} contient encore un PARTUUID du NVMe : la copie ne démarrera pas seule.")
+            ok = False
+        elif f"PARTUUID={new_root}" not in content and f"PARTUUID={new_boot}" not in content:
+            log(f"[WARN] {path} ne contient aucun PARTUUID de la copie ({new_root}/{new_boot}).")
+            ok = False
     return ok
 
 # ---------------------------------------------------------------------- #
@@ -318,6 +400,8 @@ def fix_boot_identifiers(dest, dest_boot_path, boot_src):
 # Renvoie True si succès, False si échec (n'interrompt jamais le reste)  #
 # ---------------------------------------------------------------------- #
 def backup_one(target):
+    global _current_target
+    _current_target = target
     start_time = datetime.now()
     log(f"=== Début sauvegarde vers {target.upper()} ===")
 
@@ -413,6 +497,11 @@ def backup_one(target):
         if not fix_boot_identifiers(dest, dest_boot_path, boot_src):
             log(f"[WARN] {label} : identifiants non corrigés, la copie risque de ne pas démarrer seule.")
 
+        # ---- Contrôle de la partition BOOT de la copie ----
+        missing = verify_boot_files(dest_boot_path)
+        if missing:
+            log(f"[WARN] {label} : fichiers de démarrage manquants dans la copie : {', '.join(missing)}")
+
         # Occupation du support après la sauvegarde
         dst_used_go, dst_total_go, dst_pct = usage_pct(dest)
         log(f"Occupation {label} (après backup)  : {dst_pct:.1f}% ({dst_used_go:.1f} Go / {dst_total_go:.1f} Go)")
@@ -422,6 +511,8 @@ def backup_one(target):
 
         elapsed = datetime.now() - start_time
         minutes, seconds = divmod(int(elapsed.total_seconds()), 60)
+        STATS[target] = {"duree": f"{minutes}m {seconds:02d}s", "pct": dst_pct,
+                         "used": dst_used_go, "total": dst_total_go}
         log(f"=== Sauvegarde {label} terminée avec succès (durée : {minutes}m {seconds:02d}s) ===")
         return True
 
@@ -451,7 +542,14 @@ def main():
         description="Sauvegarde NVMe -> Clé USB puis Carte SD (cron)")
     parser.add_argument("--target", choices=["usb", "sd", "both"], default="both",
                         help="Support(s) de destination (défaut : both = usb puis sd)")
+    parser.add_argument("--test-telegram", action="store_true",
+                        help="Envoie un message de test Telegram puis quitte")
     args = parser.parse_args()
+
+    if args.test_telegram:
+        ok, info = send_telegram("🧪 Test Backup_cron.py : les notifications Telegram fonctionnent.")
+        print("Telegram :", "message envoyé" if ok else f"ÉCHEC ({info})")
+        sys.exit(0 if ok else 1)
 
     targets = ["usb", "sd"] if args.target == "both" else [args.target]
 
@@ -471,8 +569,31 @@ def main():
     log(f"Durée totale : {minutes}m {seconds:02d}s")
     log("########## Fin Sauvegarde ##########")
 
+    # ---- Compte rendu Telegram ----
+    failed = [t for t, ok in results.items() if not ok]
+    if NOTIFY_TELEGRAM and (failed or ANOMALIES or NOTIFY_ON_SUCCESS):
+        icon = "❌" if failed else ("⚠️" if ANOMALIES else "✅")
+        title = ("ÉCHEC" if failed else ("terminée avec anomalies" if ANOMALIES else "terminée"))
+        lines = [f"{icon} Sauvegarde NVMe {title}",
+                 f"🕒 {global_start.strftime('%d/%m/%Y %H:%M')} — durée {minutes}m {seconds:02d}s"]
+        for t, ok in results.items():
+            if ok:
+                st = STATS.get(t, {})
+                extra = f" — {st['duree']}, support occupé à {st['pct']:.0f}%" if st else ""
+                lines.append(f"• {t.upper()} : OK{extra}")
+            else:
+                lines.append(f"• {t.upper()} : ❌ ÉCHEC")
+        if ANOMALIES:
+            lines.append("")
+            lines.append(f"Anomalies ({len(ANOMALIES)}) :")
+            lines += [f"- {a[:300]}" for a in ANOMALIES[:10]]
+            if len(ANOMALIES) > 10:
+                lines.append(f"… et {len(ANOMALIES) - 10} autre(s), voir backup_cron.log")
+        ok, info = send_telegram("\n".join(lines))
+        log(f"Telegram : {'notification envoyée' if ok else f'ÉCHEC envoi ({info})'}")
+
     # Code retour non nul si au moins un support a échoué (utile pour cron / alerting)
-    if not all(results.values()):
+    if failed:
         sys.exit(1)
 
 if __name__ == "__main__":

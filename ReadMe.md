@@ -85,6 +85,34 @@ Tâche planifiée (tous les lundis à 12h00, si le Raspberry Pi est allumé à c
 
 > **La sauvegarde doit toujours être lancée depuis le NVMe**, jamais depuis la clé USB ou la carte SD après un démarrage de test : source et destination ne seraient plus les bonnes. Vérifier avec `findmnt /` (attendu : `/dev/nvme0n1p2`).
 
+### Notifications Telegram
+Les deux scripts peuvent envoyer un compte rendu sur Telegram, via le **même bot et le même fichier `~/.telegram_config`** que `telegram_bot_ctrl_pi5.py` (clés `token_ctrl` et `chat_id`). Les scripts appellent directement l'API Telegram : le bot de contrôle n'a pas besoin d'être démarré pour qu'ils puissent notifier.
+
+| Situation                                                                                                    | Message                                                                                        |
+|---                                                                                                           |---                                                                                             |
+| Échec d'un support (rsync, support introuvable, trop petit…)                                                 | ❌ toujours envoyé                                                                             |
+| Succès avec anomalie (`[WARN]`, PARTUUID non corrigés, fichiers de démarrage manquants, occupation ≥ seuil…) | ⚠️ toujours envoyé, avec la liste des anomalies (10 maximum)                                   |
+| Succès sans anomalie                                                                                         | ✅ envoyé si `NOTIFY_ON_SUCCESS = True` (défaut cron : oui ; défaut interface graphique : non) |
+
+Le compte rendu cron récapitule chaque support (USB, SD), la durée et l'occupation. Après écriture de `fstab` et `cmdline.txt`, le script relit les fichiers pour vérifier qu'il ne reste plus de `PARTUUID` du NVMe, et contrôle la présence de `kernel_2712.img`, `config.txt` et `cmdline.txt` dans la copie.
+
+Tester la configuration :
+```bash
+python3 /home/jfbrunet/Projects/Backup_NVMe/Backup_cron.py --test-telegram
+```
+Pour désactiver les notifications : `NOTIFY_TELEGRAM = False` en tête du script. Le jeton étant dans `~/.telegram_config`, s'assurer que le fichier n'est lisible que par son propriétaire : `chmod 600 ~/.telegram_config`.
+
+> Si le Pi est éteint ou sans réseau le lundi à midi, aucun message n'arrive : l'absence de message de succès ne prouve donc pas que tout va bien (d'où `NOTIFY_ON_SUCCESS = True` pour le cron).
+
+### Commande `/info_backup` du bot de contrôle
+Dans `telegram_bot_ctrl_pi5.py`, la commande **`/info_backup`** (ajoutée au menu `/aide`) répond à la demande « où en est ma sauvegarde ? » sans ouvrir de terminal. Elle lit `~/Projects/Backup_NVMe/backup_cron.log` (constante `BACKUP_LOG`), isole le **dernier** passage (le log est en mode ajout) et affiche :
+- le verdict : ✅ OK, ⚠️ avec anomalies, ❌ échec, ou ⏳ en cours / interrompue (pas de ligne « Fin Sauvegarde ») ;
+- la date de la sauvegarde et son ancienneté, avec un avertissement si elle date de plus de `BACKUP_MAX_DAYS` jours (8 par défaut : sauvegarde hebdomadaire en retard, Pi éteint le lundi…) ;
+- le résultat par support (USB, SD), l'occupation après sauvegarde, la durée totale ;
+- les anomalies relevées (8 maximum).
+
+Elle complète les notifications : celles-ci arrivent d'elles-mêmes à la fin d'une sauvegarde, `/info_backup` permet de vérifier à la demande, et notamment de détecter une sauvegarde qui n'a pas eu lieu. Après modification du bot, le redémarrer pour prendre en compte la commande.
+
 ## Exemple de log
 
 Sauvegarde vers la carte SD (le `PARTUUID` de la racine est ici déduit de celui du BOOT) :
@@ -171,6 +199,7 @@ Les journaux de la copie sont incomplets (dossier `/var/log/exim4` manquant, anc
 - `rsync`, `lsblk`, `findmnt`
 - Droits `sudo` sans mot de passe pour les commandes `mount`/`umount`/`rsync`/`tee` utilisées par les scripts (`sudo -n`), à configurer via `visudo` pour un fonctionnement non interactif (indispensable pour le cron)
 - Python 3
+- Pour les notifications Telegram et `/info_backup` : `~/.telegram_config` avec `token_ctrl` et `chat_id`, et un accès Internet (bibliothèque standard uniquement pour les scripts de sauvegarde, rien à installer)
 - Pour l'application graphique : `python3-tk`, `Pillow`
 - Optionnel : `log2ram` (si absent, l'étape « Journaux » est ignorée)
 
@@ -188,8 +217,9 @@ Backup_NVMe/
 - La destination doit déjà contenir un système de fichiers ext4/ext3/ext2 préparé au préalable (le script ne partitionne ni ne formate le support).
 - La détection de la partition BOOT suppose une disposition classique (partition FAT32/vfat sur le même disque physique que la partition ROOT).
 - La correction des `PARTUUID` suppose une table de partitions MBR (identifiant `<signature>-<n°>`).
+- `/info_backup` s'appuie sur le format des lignes de `backup_cron.log` : si les messages des scripts changent, adapter `_resume_derniere_sauvegarde()` dans le bot.
 - Les journaux de la copie sont ceux du NVMe au moment de la sauvegarde (copie de `/var/hdd.log`) : ils ne reflètent pas ceux de la copie elle-même.
-- L'alerte de capacité (`WARN_THRESHOLD_PCT`) est purement informative : elle ne bloque pas la sauvegarde et ne déclenche aucune notification externe (à ajouter séparément si besoin, ex. email ou Telegram).
+- L'alerte de capacité (`WARN_THRESHOLD_PCT`) est purement informative : elle ne bloque pas la sauvegarde ; elle est signalée dans le compte rendu Telegram.
 
 ## Auteur
 Jean-François BRUNET - JFBConseils - Septembre / Octobre 2026

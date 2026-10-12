@@ -8,6 +8,10 @@
 #
 #  Bootabilité : après les rsync, les PARTUUID du NVMe sont remplacés par ceux
 #  du support dans /etc/fstab et boot/cmdline.txt de la copie.
+#
+#  Notifications Telegram : en cas d'échec ou d'anomalie, un message est envoyé via
+#  le même bot / ~/.telegram_config que telegram_bot_ctrl_pi5.py (clés token_ctrl,
+#  chat_id). Le message de succès est désactivé par défaut (NOTIFY_ON_SUCCESS).
 # ===============================================================================
 
 import tkinter as tk
@@ -18,6 +22,9 @@ import os
 import re
 import shutil
 import threading
+import urllib.request
+import urllib.parse
+from pathlib import Path
 from datetime import datetime
 
 # ---------------------------------------------------------------------- #
@@ -33,6 +40,52 @@ EXT_FS = ("ext4", "ext3", "ext2")
 # Seuil d'alerte : si le support de sauvegarde dépasse ce % d'occupation
 # après la sauvegarde, un avertissement est affiché (sans faire échouer la sauvegarde)
 WARN_THRESHOLD_PCT = 80
+
+# ---- Notifications Telegram ----
+NOTIFY_TELEGRAM   = True    # False = aucune notification
+NOTIFY_ON_SUCCESS = False   # True = message aussi quand tout va bien (en GUI, on voit déjà le résultat à l'écran)
+CONFIG_FILE       = Path.home() / ".telegram_config"
+TOKEN_KEY         = "token_ctrl"   # même clé que telegram_bot_ctrl_pi5.py
+
+def _read_telegram_config():
+    """Lit token et chat_id dans ~/.telegram_config. Renvoie (token, chat_id, erreur)."""
+    token = chat_id = ""
+    try:
+        for line in CONFIG_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            k, v = k.strip(), v.strip().strip('"').strip("'")
+            if k == TOKEN_KEY:
+                token = v
+            elif k == "chat_id":
+                chat_id = v
+    except Exception as e:
+        return "", "", f"lecture de {CONFIG_FILE} impossible : {e}"
+    if not token or not chat_id:
+        return "", "", f"{TOKEN_KEY} ou chat_id absent de {CONFIG_FILE}"
+    return token, chat_id, ""
+
+def send_telegram(text):
+    """Envoie 'text' au chat Telegram. Renvoie (ok, info). Ne lève jamais d'exception
+    et n'affiche jamais le token."""
+    token, chat_id, err = _read_telegram_config()
+    if err:
+        return False, err
+    try:
+        data = urllib.parse.urlencode({"chat_id": chat_id, "text": text[:4000]}).encode()
+        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return (r.status == 200), f"HTTP {r.status}"
+    except Exception as e:
+        code = getattr(e, "code", "")   # l'URL contient le token : on ne montre que le type d'erreur
+        return False, f"{type(e).__name__} {code}".strip()
+
+def verify_boot_files(dest_boot_path):
+    """Renvoie la liste des fichiers de démarrage indispensables absents de la copie."""
+    needed = ("kernel_2712.img", "config.txt", "cmdline.txt")
+    return [f for f in needed if not os.path.isfile(os.path.join(dest_boot_path, f))]
 
 def usage_pct(path):
     """Renvoie (used_go, total_go, pct_occupation) pour le point de montage donné."""
@@ -161,6 +214,22 @@ def fix_boot_identifiers(dest, dest_boot_path, boot_src, logfn):
         else:
             logfn(f"[WARN] Écriture de {path} impossible : {proc.stderr.strip()}")
             ok = False
+
+    # Vérification après écriture : plus aucun PARTUUID du NVMe, et celui de la copie présent
+    for path in targets:
+        try:
+            with open(path, encoding="utf-8") as f:
+                content = f.read()
+        except Exception as e:
+            logfn(f"[WARN] Vérification de {path} impossible : {e}")
+            ok = False
+            continue
+        if f"PARTUUID={old_root}" in content or f"PARTUUID={old_boot}" in content:
+            logfn(f"[WARN] {path} contient encore un PARTUUID du NVMe : la copie ne démarrera pas seule.")
+            ok = False
+        elif f"PARTUUID={new_root}" not in content and f"PARTUUID={new_boot}" not in content:
+            logfn(f"[WARN] {path} ne contient aucun PARTUUID de la copie ({new_root}/{new_boot}).")
+            ok = False
     return ok
 
 # ---------------------------------------------------------------------- #
@@ -178,6 +247,7 @@ class BackupApp(tk.Toplevel):
         self.dest         = None    # point de montage réel
         self._proc        = None    # processus rsync en cours (pour Annuler)
         self._cancelled   = False   # drapeau d'annulation
+        self.anomalies    = []      # [WARN] / échecs relevés pendant la sauvegarde (pour Telegram)
 
         # Cache lsblk : rempli une seule fois par opération de sauvegarde
         self._lsblk_cache = None
@@ -278,6 +348,10 @@ class BackupApp(tk.Toplevel):
     # ------------------------------------------------------------------ #
 
     def log_write(self, text):
+        for line in text.splitlines():
+            l = line.strip()
+            if l.startswith("[WARN") or "Échec (code" in l:
+                self.anomalies.append(l[:300])
         self.log.config(state="normal")
         self.log.insert("end", text)
         self.log.see("end")
@@ -533,6 +607,7 @@ class BackupApp(tk.Toplevel):
 
         self._refresh_lsblk_cache()
         self._cancelled = False
+        self.anomalies = []
 
         dest = self.resolve_dest()
         if not dest:
@@ -665,6 +740,13 @@ class BackupApp(tk.Toplevel):
                            f"[WARN] {self.label} : identifiants non corrigés, "
                            f"la copie risque de ne pas démarrer seule.\n")
 
+            # ---- Contrôle de la partition BOOT de la copie ----
+            missing = verify_boot_files(dest_boot_path)
+            if missing:
+                self.after(0, self.log_write,
+                           f"[WARN] {self.label} : fichiers de démarrage manquants dans la copie : "
+                           f"{', '.join(missing)}\n")
+
             # Occupation du support après la sauvegarde
             dst_used_go, dst_total_go, dst_pct = usage_pct(self.dest)
             self.after(0, self.log_write,
@@ -691,6 +773,29 @@ class BackupApp(tk.Toplevel):
     #  Callbacks résultat                                                #
     # ------------------------------------------------------------------ #
 
+    def _notify(self, icon, title, detail=""):
+        """Envoie un message Telegram en tâche de fond (n'interrompt jamais l'interface)."""
+        if not NOTIFY_TELEGRAM:
+            return
+        lines = [f"{icon} Sauvegarde NVMe → {self.label} (manuelle) : {title}",
+                 f"🕒 {datetime.now().strftime('%d/%m/%Y %H:%M')}"]
+        if detail:
+            lines.append(detail)
+        if self.anomalies:
+            lines.append("")
+            lines.append(f"Anomalies ({len(self.anomalies)}) :")
+            lines += [f"- {a}" for a in self.anomalies[:10]]
+            if len(self.anomalies) > 10:
+                lines.append(f"… et {len(self.anomalies) - 10} autre(s), voir la fenêtre de log")
+        msg = "\n".join(lines)
+
+        def _send():
+            ok, info = send_telegram(msg)
+            self.after(0, self.log_write,
+                       "Telegram : notification envoyée\n" if ok
+                       else f"Telegram : ÉCHEC envoi ({info})\n")
+        threading.Thread(target=_send, daemon=True).start()
+
     def on_success(self, elapsed, dst_pct=None):
         self.progress.stop()
         end_time = datetime.now()
@@ -706,6 +811,11 @@ class BackupApp(tk.Toplevel):
             f"--- Terminé : {end_time.strftime('%d/%m/%Y %H:%M:%S')} "
             f"(durée : {minutes}m {seconds:02d}s) ---\n"
         )
+        detail = f"Durée {minutes}m {seconds:02d}s" + (f" — support occupé à {dst_pct:.0f}%" if dst_pct is not None else "")
+        if self.anomalies:
+            self._notify("⚠️", "terminée avec anomalies", detail)
+        elif NOTIFY_ON_SUCCESS:
+            self._notify("✅", "terminée", detail)
 
     def on_cancelled(self):
         self.progress.stop()
@@ -718,6 +828,9 @@ class BackupApp(tk.Toplevel):
         self.status.config(text=f"❌ Erreur : {err}", fg="red")
         self.btn.config(state="normal")
         self.log_write(f"\n--- ERREUR : {err} ---\n")
+        if not hasattr(self, "label"):
+            self.label = "support"
+        self._notify("❌", "ÉCHEC", f"Erreur : {err}")
 
 # ============================================================
 #  Entrée du programme
