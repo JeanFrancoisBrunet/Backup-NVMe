@@ -18,14 +18,14 @@
 #  Lecture du fichier log :  cat /home/jfbrunet/Projects/Backup_NVMe/backup_cron.log
 #
 #  Bootabilité : après les rsync, le script réécrit les PARTUUID du NVMe par ceux
-#  du support dans /etc/fstab et boot/cmdline.txt de la copie (sinon la copie
-#  pointerait vers la partition du NVMe et ne démarrerait pas seule).
+#  du support dans /etc/fstab et boot/cmdline.txt de la copie 
+#  (sinon la copie pointerait vers la partition du NVMe et ne démarrerait pas seule).
 #
 #  Notifications Telegram : à la fin, un compte rendu (✅ / ⚠️ / ❌) est envoyé via
 #  le même bot et le même fichier ~/.telegram_config que telegram_bot_ctrl_pi5.py
 #  (clés token_ctrl et chat_id). Les échecs et anomalies sont toujours envoyés ;
-#  le message de succès dépend de NOTIFY_ON_SUCCESS. Le bot n'a pas besoin de
-#  tourner : le script appelle directement l'API Telegram.
+#  le message de succès dépend de NOTIFY_ON_SUCCESS. Le bot n'a pas besoin de tourner : 
+#  le script appelle directement l'API Telegram.
 #
 # =============================================================================
 
@@ -579,7 +579,7 @@ def main():
         for t, ok in results.items():
             if ok:
                 st = STATS.get(t, {})
-                extra = f" — {st['duree']}, support occupé à {st['pct']:.0f}%" if st else ""
+                extra = f" — {st['duree']},\n  support occupé à {st['pct']:.0f}%" if st else ""
                 lines.append(f"• {t.upper()} : OK{extra}")
             else:
                 lines.append(f"• {t.upper()} : ❌ ÉCHEC")
