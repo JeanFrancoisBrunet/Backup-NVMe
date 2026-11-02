@@ -195,3 +195,42 @@
 [02/11/2026 12:00:01] Occupation Clé USB (avant backup) : 31.7% (74.1 Go / 233.8 Go)
 [02/11/2026 12:00:01] BOOT source : /boot/firmware/
 [02/11/2026 12:00:01] Synchronisation ROOT...
+[02/11/2026 12:00:49] Rsync ROOT : OK
+[02/11/2026 12:00:49] Synchronisation BOOT...
+[02/11/2026 12:00:49] Rsync BOOT : OK
+[02/11/2026 12:00:49] Synchronisation JOURNAUX...
+[02/11/2026 12:00:49] Journaux : /var/hdd.log -> /media/usb/var/log : OK
+[02/11/2026 12:00:49] Correction des identifiants de démarrage (fstab, cmdline.txt)...
+[02/11/2026 12:00:49] /media/usb/etc/fstab : PARTUUID corrigés (cea73a38-02 -> 4ea0c9aa-02)
+[02/11/2026 12:00:49] /media/usb/boot/cmdline.txt : PARTUUID corrigés (cea73a38-02 -> 4ea0c9aa-02)
+[02/11/2026 12:00:49] Occupation Clé USB (après backup)  : 31.7% (74.0 Go / 233.8 Go)
+[02/11/2026 12:00:49] === Sauvegarde Clé USB terminée avec succès (durée : 0m 47s) ===
+[02/11/2026 12:00:49] === Début sauvegarde vers SD ===
+[02/11/2026 12:00:49] Carte SD trouvée : /dev/mmcblk0p2 déjà montée sur /media/jfbrunet/rootfs
+[02/11/2026 12:00:49] Support    : Carte SD
+[02/11/2026 12:00:49] Montage    : /media/jfbrunet/rootfs
+[02/11/2026 12:00:49] Espace lib : 142.95 Go
+[02/11/2026 12:00:49] Occupation SSD NVMe (source)      : 8.0% (72.9 Go / 915.3 Go)
+[02/11/2026 12:00:49] Occupation Carte SD (avant backup) : 33.6% (78.3 Go / 233.1 Go)
+[02/11/2026 12:00:49] BOOT source : /boot/firmware/
+[02/11/2026 12:00:49] Synchronisation ROOT...
+[02/11/2026 12:02:33]   file has vanished: "/home/jfbrunet/.config/chromium/Default/IndexedDB/https_claude.ai_0.indexeddb.blob/1/38/3802"
+[02/11/2026 12:02:33]   rsync warning: some files vanished before they could be transferred (code 24) at main.c(1347) [sender=3.2.7]
+[02/11/2026 12:02:33] Rsync ROOT : Terminé avec fichiers ignorés (code 24) - normal
+[02/11/2026 12:02:33] Montage de /dev/mmcblk0p1 -> /media/jfbrunet/rootfs/boot
+[02/11/2026 12:02:33] Synchronisation BOOT...
+[02/11/2026 12:02:33] Rsync BOOT : OK
+[02/11/2026 12:02:33] Synchronisation JOURNAUX...
+[02/11/2026 12:02:33] Journaux : /var/hdd.log -> /media/jfbrunet/rootfs/var/log : OK
+[02/11/2026 12:02:33] Correction des identifiants de démarrage (fstab, cmdline.txt)...
+[02/11/2026 12:02:33] /media/jfbrunet/rootfs/etc/fstab : PARTUUID corrigés (cea73a38-02 -> 2e767340-02)
+[02/11/2026 12:02:33] /media/jfbrunet/rootfs/boot/cmdline.txt : PARTUUID corrigés (cea73a38-02 -> 2e767340-02)
+[02/11/2026 12:02:33] Occupation Carte SD (après backup)  : 33.6% (78.2 Go / 233.1 Go)
+[02/11/2026 12:02:33] === Sauvegarde Carte SD terminée avec succès (durée : 1m 44s) ===
+[02/11/2026 12:02:33] Démontage BOOT...
+[02/11/2026 12:02:33] ---------- Résumé ----------
+[02/11/2026 12:02:33]   USB  : OK
+[02/11/2026 12:02:33]   SD   : OK
+[02/11/2026 12:02:33] Durée totale : 2m 32s
+[02/11/2026 12:02:33] ########## Fin Sauvegarde ##########
+[02/11/2026 12:02:34] Telegram : ÉCHEC envoi (URLError)
