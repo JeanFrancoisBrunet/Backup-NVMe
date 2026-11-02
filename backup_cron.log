@@ -185,3 +185,13 @@
 [26/10/2026 12:01:52] Durée totale : 1m 50s
 [26/10/2026 12:01:52] ########## Fin Sauvegarde ##########
 [26/10/2026 12:01:54] Telegram : notification envoyée
+[02/11/2026 12:00:01] ########## Début Sauvegarde Disk NVMe vers (USB+SD) ##########
+[02/11/2026 12:00:01] === Début sauvegarde vers USB ===
+[02/11/2026 12:00:01] Clé USB trouvée : /dev/sda2 déjà montée sur /media/usb
+[02/11/2026 12:00:01] Support    : Clé USB
+[02/11/2026 12:00:01] Montage    : /media/usb
+[02/11/2026 12:00:01] Espace lib : 147.75 Go
+[02/11/2026 12:00:01] Occupation SSD NVMe (source)      : 8.0% (72.9 Go / 915.3 Go)
+[02/11/2026 12:00:01] Occupation Clé USB (avant backup) : 31.7% (74.1 Go / 233.8 Go)
+[02/11/2026 12:00:01] BOOT source : /boot/firmware/
+[02/11/2026 12:00:01] Synchronisation ROOT...
