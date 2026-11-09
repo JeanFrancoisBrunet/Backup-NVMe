@@ -102,6 +102,8 @@ python3 /home/jfbrunet/Projects/Backup_NVMe/Backup_cron.py --test-telegram
 ```
 Pour désactiver les notifications : `NOTIFY_TELEGRAM = False` en tête du script. Le jeton étant dans `~/.telegram_config`, s'assurer que le fichier n'est lisible que par son propriétaire : `chmod 600 ~/.telegram_config`.
 
+L'envoi est tenté `TELEGRAM_TENTATIVES` fois (3 par défaut), avec `TELEGRAM_PAUSE_S` secondes (20 par défaut) entre deux essais, pour absorber une coupure réseau ou un DNS lent. Une erreur 4xx (jeton, `chat_id`) n'est pas répétée. En cas d'échec, le log indique la cause réelle (`Telegram : ÉCHEC envoi (URLError <cause> (essai 3/3))`), jamais le jeton.
+
 > Si le Pi est éteint ou sans réseau le lundi à midi, aucun message n'arrive : l'absence de message de succès ne prouve donc pas que tout va bien (d'où `NOTIFY_ON_SUCCESS = True` pour le cron).
 
 ### Commande `/info_backup` du bot de contrôle
@@ -222,4 +224,4 @@ Backup_NVMe/
 - L'alerte de capacité (`WARN_THRESHOLD_PCT`) est purement informative : elle ne bloque pas la sauvegarde ; elle est signalée dans le compte rendu Telegram.
 
 ## Auteur
-Jean-François BRUNET - JFBConseils - Septembre / Octobre 2026
+Jean-François BRUNET - JFBConseils - Septembre / Octobre / Novembre 2026

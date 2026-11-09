@@ -35,7 +35,9 @@ import re
 import shutil
 import sys
 import argparse
+import time
 import urllib.request
+import urllib.error
 import urllib.parse
 from pathlib import Path
 from datetime import datetime
@@ -91,21 +93,35 @@ def _read_telegram_config():
         return "", "", f"{TOKEN_KEY} ou chat_id absent de {CONFIG_FILE}"
     return token, chat_id, ""
 
+# Nombre d'essais d'envoi et pause entre deux essais (coupure réseau brève, DNS lent...)
+TELEGRAM_TENTATIVES = 3
+TELEGRAM_PAUSE_S    = 20
+
 def send_telegram(text):
-    """Envoie 'text' au chat Telegram. Renvoie (ok, info). Ne lève jamais d'exception
-    et n'affiche jamais le token."""
+    """Envoie 'text' au chat Telegram, avec plusieurs essais si le réseau est indisponible.
+    Renvoie (ok, info). Ne lève jamais d'exception et n'affiche jamais le token."""
     token, chat_id, err = _read_telegram_config()
     if err:
         return False, err
-    try:
-        data = urllib.parse.urlencode({"chat_id": chat_id, "text": text[:4000]}).encode()
-        req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return (r.status == 200), f"HTTP {r.status}"
-    except Exception as e:
-        # on n'affiche que le type d'erreur : l'URL contient le token
-        code = getattr(e, "code", "")
-        return False, f"{type(e).__name__} {code}".strip()
+    data = urllib.parse.urlencode({"chat_id": chat_id, "text": text[:4000]}).encode()
+    info = ""
+    for essai in range(1, TELEGRAM_TENTATIVES + 1):
+        try:
+            req = urllib.request.Request(f"https://api.telegram.org/bot{token}/sendMessage", data=data)
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return (r.status == 200), f"HTTP {r.status}"
+        except Exception as e:
+            # Type d'erreur + cause (DNS, réseau injoignable, TLS...) : 'reason' ne contient pas l'URL.
+            code = getattr(e, "code", "")
+            reason = getattr(e, "reason", "")
+            info = f"{type(e).__name__} {code} {reason}".replace(token, "***").strip()
+            info = f"{info} (essai {essai}/{TELEGRAM_TENTATIVES})"
+            # Erreur 4xx (token, chat_id...) : inutile de réessayer
+            if isinstance(e, urllib.error.HTTPError) and 400 <= e.code < 500:
+                break
+            if essai < TELEGRAM_TENTATIVES:
+                time.sleep(TELEGRAM_PAUSE_S)
+    return False, info
 
 def verify_boot_files(dest_boot_path):
     """Vérifie que la partition BOOT de la copie contient bien les fichiers indispensables.
